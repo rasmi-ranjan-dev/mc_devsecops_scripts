@@ -1,0 +1,24 @@
+projectname: "Insights_PLAC"
+scm_branch: "test_7.0"
+scm_url: "http://172.18.228.220:8080/root/dso_insights_plac.git"
+root_workspace_dir: "/u01/nfs_shared_files"
+build_root: "/u01"
+project_palamida_id: "142"
+tipar_id : "TIPAR-112024-000034"
+
+build_type: "incremental"
+build_server_ip: "172.18.228.115"
+shared_base: "/shared_files"
+
+sourcepath:
+  - "dso_insights_plac/cdp-insights/cdpinsights-parent/cdp-insights-core"
+  - "dso_insights_plac/cdp-insights/cdpinsights-parent/cdp-insights-common"
+
+scanpath: "/shared_files/Insights_PLAC/CVC/jarsfoldernew"
+  # incremental_scanpath: "/shared_files/Insights_PLAC/incremental/"  :  Incremental scanpath is /root_workspace/Project_Name/incremental/build_no/
+  # clean the incremental_path after a full build ...
+incremental_scanpath: "/u01/nfs_shared_files/Insights_PLAC/incremental"
+incr_scan_path: "R:\\Insights_PLAC\\incremental"
+outputfolder: "/var/jenkins_home/jobs/PLAC_7.0_IPSafeV1_M_Asyc_Incr/workspace/Insights_PLAC"
+data: "/var/jenkins_home/nvddbupdate/nvddbupdateonly"
+web_url : "http://172.18.228.57:8081/generic-webhook-trigger/invoke?token="
