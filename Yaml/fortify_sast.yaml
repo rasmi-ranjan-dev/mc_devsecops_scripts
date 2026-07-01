@@ -1,0 +1,10 @@
+fortifyhome: "C:\\Program Files\\Fortify\\OpenText_SAST_Fortify_25.4.0"
+project : "Jile"
+version : "Jile-ALM-7.2-dev"
+translation_options: "-Xmx4G -encoding UTF-8"
+scan_options: "-Xmx4G"
+rulepack_update: false
+clean_build: false
+user_name: "admin"
+SCAN_TYPE: "SAST"
+server_url: "http://172.18.228.112:8080"
