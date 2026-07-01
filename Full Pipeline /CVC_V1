@@ -1,0 +1,383 @@
+def primaryDest = "/var/jenkins_home/jobs/${PIPELINE}/workspace/all_folders/CVC/${TIPAR_ID}"
+def fallBack = "/var/jenkins_home/jobs/${PIPELINE}/workspace"
+  def paths="$JENKINS_NFS_MOUNT/${PROJECT}"
+  def Grype_Home="/var/jenkins_home/Softwares/Grype"
+  def excel_path = "${env.WORKSPACE}/${PROJECT}/dependency-check-report.xlsx"
+  def csv_path = "${env.WORKSPACE}/${PROJECT}/report_grype.csv"
+  def dest =''
+
+pipeline {
+    //tools  used in pipeline  is mentioned in this   section     
+	tools 
+	{
+        maven "Maven_3.6"
+        jdk "openjdk-8"
+    }
+    environment 
+    {
+       
+        BUILD_NUM = "${currentBuild.getNumber()}"
+       	PROJECT="${params.PROJECT}"
+        VERSION ="${params.VERSION}"
+        NFS_SHARE="${params.NFS_SHARE}"
+        FOLDER="${params.FOLDER}"
+        COMPONENT_LIST="${COMPONENT_LIST}"
+        TODAY_DATE = sh(returnStdout: true, script: 'date +%d-%m-%Y').trim()
+        GIT_CRED_JILE=credentials('git_cred_jile')
+        TIPAR_ID="${params.TIPAR_ID}"
+        PIPELINE="${params.PIPELINE}"
+        Prev_report="${params.Prev_report}"
+        //inputApiBaseURL="${params.inputApiBaseURL}"
+        BUILD_TYPE="${params.BUILD_TYPE}"
+        PARENT_BUILD_NUM="${params.PARENT_BUILD_NUM}"
+    }
+    
+     parameters 
+	{
+	    string(defaultValue: 'http://172.18.228.57:8091',description: 'Application URL', name: 'inputApiBaseURL')
+		booleanParam(defaultValue:false,description: 'Enable to create each defect for each sast issue',name: 'devplusDefectForSecIssues')
+        string(defaultValue: '',name:'PIPELINE',description:' Configured Pipeline ')
+ 
+    }
+    agent{label 'cvcnode'}
+    stages 
+    {
+        
+        stage('Checkout')
+        {
+            steps
+            {
+                
+                script{
+                       
+                      sh 'rm -rf jilescripts'
+                          
+                       echo 'cloning the scripts'
+                       def url = "${params.SCM_URL_SCRIPT}"
+                       println url
+                       
+                       
+                        def repository = url.replace("http://", "")
+                        def password = "${GIT_CRED_JILE_PSW}"
+                       def password1 = password.replaceAll("@", "%40")
+                       println password1
+                     def new_url="http://$GIT_CRED_JILE_USR:${password1}@${repository}"
+                      
+                     println new_url
+                     sh "git clone -b Shellscripts '${new_url}'"
+
+                     //Check if a directory with project name exists in current workspace
+                     def directory = new File("${params.PROJECT}")
+          
+                   if(fileExists("$directory")) {
+                         println('The directory exists.')
+                          echo "$directory"
+                    } 
+                    else {
+                sh "mkdir -p "+ params.PROJECT
+                
+                
+                sh "chmod +x "+ params.PROJECT
+                sh " cd ${params.PROJECT}"
+                sh " mkdir -p "+ params.VERSION
+                sh "chmod +x "+ params.VERSION
+                          }
+                              
+			markBuild pipelineType: 'PT-CD'
+			 println "${params.BUILD_NUM}"
+             def TIPAR_ID="${params.TIPAR_ID}"
+             sh "echo parent tiparid  is $TIPAR_ID"
+                     
+                }           
+            
+            }
+         }
+        /*
+        stage('Syft SBOM generation') {
+            
+            steps {
+                
+               
+            }
+        }
+         stage('Grype Scan') {
+            
+            steps {
+                
+               
+                }
+            }
+        }*/
+        stage('CVC Scan and Report Generation')
+        {
+            steps
+            {
+                
+        script{
+            def directory1 = new File("${params.PROJECT}/${params.VERSION}")
+          
+                   if(fileExists("$directory1")) {
+                         println('The directory exists.')
+                          echo "$directory1"
+                    } 
+                    else {
+                sh "cd  ${WORKSPACE}/${params.PROJECT} && mkdir ${params.VERSION} && chmod -R 777 ${params.VERSION}"
+                          }
+            
+                        
+                
+                          
+                              
+            
+            /* if("${params.PROJECT}" == "FEE") {
+                echo "COPY STarting...."
+                sh "sudo cp -r /shared_files/FEE/JarsForCVC/* /shared_files/FEE/CVC/jarsfoldernew2"
+                echo "COPY Completed...."
+            } */
+            
+            if("${params.BUILD_TYPE}" == "incremental") {
+                 sh "sh $WORKSPACE/jilescripts/Scripts/cvc.sh $JENKINS_NFS_MOUNT ${PROJECT}  ${params.VERSION} ${params.FOLDER}"
+            } else {
+                 sh "sh $WORKSPACE/jilescripts/Scripts/cvc_test.sh $JENKINS_NFS_MOUNT ${PROJECT}  ${params.VERSION} ${params.FOLDER}"
+            }
+
+
+          //Syft scan
+
+           dir('/var/jenkins_home/Softwares/Syft'){
+                echo 'Running Syft Scan on Source'
+                //Source must be directory or image here
+ sh "export http_proxy=http://172.17.0.11:8080 && export https_proxy=http://172.17.0.11:8080 && ./syft ${paths} -o cyclonedx-json > ${WORKSPACE}/${PROJECT}/syft_cyclonedx.json"            
+                    archiveArtifacts artifacts: 'syft_cyclonedx.json', followSymlinks: false
+                }
+
+            //Grype Scan
+
+             dir("${Grype_Home}"){
+                echo 'Running Grype Scan on Source'
+                sh "export GRYPE_DB_AUTO_UPDATE=false && export GRYPE_DB_ROOT=${Grype_Home} && export http_proxy=http://172.17.0.11:8080 && export https_proxy=http://172.17.0.11:8080 && ./grype ${paths}/CVC/jarsfoldernew --by-cve -o template -t csv.tmpl > ${WORKSPACE}/${PROJECT}/${params.VERSION}/report_grype.csv"
+                
+                sh "export GRYPE_DB_AUTO_UPDATE=false && export GRYPE_DB_ROOT=${Grype_Home} && export http_proxy=http://172.17.0.11:8080 && export https_proxy=http://172.17.0.11:8080 && ./grype ${paths}/CVC/jarsfoldernew --by-cve -o template -t html.tmpl > ${WORKSPACE}/${PROJECT}/${params.VERSION}/report_grype.html"
+
+                 sh "export GRYPE_DB_AUTO_UPDATE=false && export GRYPE_DB_ROOT=${Grype_Home} && export http_proxy=http://172.17.0.11:8080 && export https_proxy=http://172.17.0.11:8080 && ./grype ${paths}/CVC/jarsfoldernew --by-cve -o template -t html_cve.tmpl > ${WORKSPACE}/${PROJECT}/${params.VERSION}/report_grype_cve.html"
+                 
+                sh "export GRYPE_DB_AUTO_UPDATE=false && export GRYPE_DB_ROOT=${Grype_Home} && export http_proxy=http://172.17.0.11:8080 && export https_proxy=http://172.17.0.11:8080 && ./grype ${paths}/CVC/jarsfoldernew --by-cve -o json > ${WORKSPACE}/${PROJECT}/${params.VERSION}/report_grype.json"
+            
+                    //archiveArtifacts artifacts: 'report_grype.csv', followSymlinks: false
+
+             }
+             archiveArtifacts artifacts: "${PROJECT}/${params.VERSION}/report_grype.csv", followSymlinks: false
+             archiveArtifacts artifacts: "${PROJECT}/${params.VERSION}/report_grype.html", followSymlinks: false
+             archiveArtifacts artifacts: "${PROJECT}/${params.VERSION}/report_grype_cve.html", followSymlinks: false
+             archiveArtifacts artifacts: "${PROJECT}/${params.VERSION}/report_grype.json", followSymlinks: false
+             
+            
+            
+            
+                      	 
+            buildDate = sh(returnStdout: true,script:'date').trim()
+			echo "Build Date: ${buildDate}"
+            echo "======= Executing CVC Scan initiation script ======="
+                   //sh " cd ${WORKSPACE}/${params.PROJECT} && rm -rf dependency-check-report.csv"
+           //  nvdApiKey 1cece696-9c08-4cc0-97a1-69635b53573c --project "${PROJECT}" --enableExperimental 
+                
+            if("${params.PROJECT}" == "FEE") {
+                sh """ /var/jenkins_home/Softwares/dependency-check-12.1.0/bin/dependency-check.sh --scan "$JENKINS_NFS_MOUNT/${PROJECT}/CVC/jarsfoldernew" --format ALL --disableCentral --disableOssIndex true --data "/var/jenkins_home/nvddbupdate/nvddbupdateonly" --out "${PROJECT}/${params.VERSION}" --project "${PROJECT}" --noupdate --enableExperimental --disableRetireJS --enableRetired --disableAssembly --propertyfile "/var/jenkins_home/Softwares/dependency-check-12.1.0/dependency-check.properties" --log "/var/jenkins_home/cvc/workspace/CVC_V1/${params.PROJECT}/cvc.log" """
+            } else {
+                sh """ /var/jenkins_home/Softwares/dependency-check-12.1.0/bin/dependency-check.sh --scan "$JENKINS_NFS_MOUNT/${PROJECT}/CVC/jarsfoldernew" --format ALL --disableCentral --disableOssIndex true --data "/var/jenkins_home/nvddbupdate/nvddbupdateonly" --out "${PROJECT}/${params.VERSION}" --project "${PROJECT}" --noupdate --enableExperimental --disableRetireJS --enableRetired --disableAssembly --propertyfile "/var/jenkins_home/Softwares/dependency-check-12.1.0/dependency-check.properties" --log "/var/jenkins_home/cvc/workspace/CVC_V1/${params.PROJECT}/cvc.log" """
+            }
+
+		
+                   
+                    
+                   def report_path="${PROJECT}/${params.VERSION}/dependency-check-report.xml"
+                     echo "finding reports in $report_path"
+                      dependencyCheckPublisher pattern: "$report_path"
+                      
+                     archiveArtifacts allowEmptyArchive: true, artifacts: "${PROJECT}/${params.VERSION}/dependency-check-report.xml", onlyIfSuccessful: true
+                      echo "${PROJECT}"
+                      
+                    
+                    //sh "echo $FOLDER"
+        //Not required as of now 
+        
+         /*
+                    sh '''
+                        mkdir -p  /var/jenkins_home/jobs/${env.JOB_NAME}/workspace/${PROJECT}
+                        cd /var/jenkins_home/jobs/${env.JOB_NAME}/workspace/${PROJECT}
+                       sudo  cp -r  . /var/jenkins_home/cvc/workspace/${env.JOB_NAME}/${PROJECT}
+                    '''
+
+                     sh  "java -jar /var/jenkins_home/Softwares/CVC/CVCAndTechstack_v7.1.jar -proxyHost 172.17.0.11 -proxyPort 8080 -cvcXml $Scanreports/dependency-check-report.xml -previousReport ${reportOutput}/CVC_${PROJECT}_PrevReport.xlsx -moduleName ${PROJECT} -outputPath ./${reportOutput} -techStackXlsx ${paths}/${PROJECT}_Techstack.xlsx -metaDataXlsx ${paths}/${PROJECT}_Metadata.xlsx"
+                 */
+
+       // sh "echo '================Merge both Dependency Check and CVC reports================'"
+
+
+
+                 //Merging both Grype and Dependency Check Reports
+
+                
+                  //sh ". /var/jenkins_home/Softwares/ipsafe/image_verification/venv_image_verify/bin/activate && cd ${Grype_Home} && python3 depcheck-lastest.py --Project ${PROJECT} --inpath ${WORKSPACE}/${PROJECT} --outpath ${WORKSPACE}/${PROJECT} && python3 report_merger.py ${WORKSPACE}/${PROJECT}/dependency-check-report.xlsx ${WORKSPACE}/${PROJECT}/report_grype.csv" 
+
+       //--previousReport ${WORKSPACE}/${PROJECT}/dependency-check-prevReport.xlsx need to be included in incremental
+              
+                // archiveArtifacts allowEmptyArchive: true, artifacts: "${PROJECT}/dependency-check-report.xlsx", onlyIfSuccessful: true
+                sh "echo '================Merge both Dependency Check and Grype CSV reports================'"
+
+
+
+                 //Merging both Grype and Dependency Check CSV Reports
+
+                  sh "sudo cp ${Grype_Home}/*.py ${WORKSPACE}/${PROJECT} && cd ${WORKSPACE}/${PROJECT} && chmod +x depcheck-lastest.py && chmod +x report_merger.py && chmod +x grype_dc_json_merge.py "
+                  
+                  
+                
+                //Reads dependency check csv and customizes it to excel, that updated excel n grype csv are passed as inputs to second utility for final merged DC excel 
+                sh ". /var/jenkins_home/Softwares/ipsafe/image_verification/venv_image_verify/bin/activate && cd ${WORKSPACE}/${PROJECT}/${params.VERSION} && python3 /var/jenkins_home/Softwares/Grype/depcheck-lastest.py --Project ${PROJECT} --inpath ${WORKSPACE}/${PROJECT}/${params.VERSION} --outpath ${WORKSPACE}/${PROJECT}/${params.VERSION} && python3 /var/jenkins_home/Softwares/Grype/report_merger.py ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx ${WORKSPACE}/${PROJECT}/${params.VERSION}/report_grype.csv  && python3 -u /var/jenkins_home/Softwares/Grype/WORKINGGRYPECOUNT_FINAL_nochnagesgrype.py --inpath ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx --outpath ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx" 
+
+                //sh " python3 -u /var/jenkins_home/Softwares/Grype/WORKINGGRYPECOUNT_FINAL_nochnagesgrype.py --inpath ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx --outpath ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx "
+                
+
+                
+
+
+
+                 
+
+                   sh " echo '=============running utility to get techstack and audit data from prev report======='"
+                   sh "if [ \$(ls -1 $JENKINS_NFS_MOUNT/${PROJECT}/${params.VERSION}/dependency-check-PrevReport.xlsx 2>/dev/null | wc -l) -eq 1 ]; then java -jar /var/jenkins_home/Softwares/CVC/CVCAndTechstack-v8.6.jar -proxyHost 172.17.0.11 -proxyPort 8080 -cvcXml ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx -previousReport $JENKINS_NFS_MOUNT/${PROJECT}/${params.VERSION}/dependency-check-PrevReport.xlsx -moduleName ${PROJECT} -outputPath ${WORKSPACE}/${PROJECT}/${params.VERSION} -techStackXlsx $JENKINS_NFS_MOUNT/${PROJECT}/${PROJECT}_${VERSION}_Techstack.xlsx -metaDataXlsx /var/jenkins_home/Softwares/CVC/CPE_IDs_Feb_metatdata.xlsx; else echo 'file not found'; fi" 
+
+                   //sh " python3 -u /var/jenkins_home/Softwares/Grype/WORKINGGRYPECOUNT_FINAL_nochnagesgrype.py --inpath ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx --outpath ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report_updated.xlsx "
+
+
+                     sh " . /var/jenkins_home/Softwares/ipsafe/image_verification/venv_image_verify/bin/activate &&  python3 -u /var/jenkins_home/Softwares/Grype/WORKINGGRYPECOUNT_FINAL_nochnagesgrype.py --inpath ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx --outpath ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx"           
+                   
+                   sh "mv ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-report.xlsx ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-PrevReport.xlsx"
+
+                
+
+       //--previousReport ${WORKSPACE}/${PROJECT}/dependency-check-prevReport.xlsx need to be included in incremental
+       sh " cp ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-PrevReport.xlsx /var/jenkins_home/jobs/${PIPELINE}/workspace/all_folders/CVC/${params.TIPAR_ID} "
+       //sh " mv /var/jenkins_home/jobs/${PIPELINE}/workspace/all_folders/CVC/${params.TIPAR_ID}/dependency-check-PrevReport.xlsx /var/jenkins_home/jobs/${PIPELINE}/workspace/all_folders/CVC/${params.TIPAR_ID}/CVC_${PROJECT}_Report.xlsx " 
+              
+                 archiveArtifacts allowEmptyArchive: true, artifacts: "${PROJECT}/${params.VERSION}/dependency-check-PrevReport.xlsx", onlyIfSuccessful: true
+                 //archiveArtifacts allowEmptyArchive: true, artifacts: "/var/jenkins_home/jobs/${PIPELINE}/workspace/all_folders/CVC/${params.TIPAR_ID}/dependency-check-PrevReport.xlsx", onlyIfSuccessful: true
+                 
+                   
+                
+ }
+            
+ }
+ }
+	
+    
+         stage('Push update to dashboard'){
+                    steps{
+                        script{
+            def apiUrl = "${params.inputApiBaseURL}/api/v1/authentication/auth"
+                     def requestBody = '{"user_name":"'+"cdpadmin"+'","password":"'+"Password@1"+'","accpetedMsgId":null}'
+                     def apiKey = 'c2VjcmV0'
+                     def contentType = 'application/json'
+                 
+                     def headerString = 'api-key: c2VjcmV0'
+                     def curlCommand = "unset http_proxy && unset https_proxy && curl -X  POST -H 'api-key: c2VjcmV0' -H 'Content-Type: application/json' -H 'Referer: http://localhost:4200' -H 'User-Agent: Mozilla/5.0' -d '${requestBody}' ${apiUrl}  "
+                     def response = sh(script: curlCommand, returnStdout: true).trim()
+                     println("auth API response >> "+response)
+                     def startIndex = response.indexOf("token")+8
+                     def endIndex = response.indexOf("tenant")-3
+                     authToken = response.substring(startIndex,endIndex)
+                     println(authToken)
+                     sh "echo ${authToken} > authToken.txt"
+                      	   
+
+				def apiUrl1 = "${params.inputApiBaseURL}/api/v1/cdpinsights/ipsafe/pipeline/utility"
+
+               dest = sh(script: " [ -d '${primaryDest}' ] && '${primaryDest}' || echo  '${fallBack}'", returnStdout: true).trim()
+
+            //This step is to push reports to parent IpSafepipeline workspace
+            
+                //sh "sudo cp ${WORKSPACE}/${PROJECT}/dependency-check-report.xlsx ${WORKSPACE}/all_folders/CVC/${params.TIPAR_ID}/Security/CVCAndTechstack/${PROJECT} && cd ${WORKSPACE}/all_folders/CVC/${params.TIPAR_ID}/Security/CVCAndTechstack/${PROJECT} && mv dependency-check-report.xlsx CVC_${PROJECT}_Report.xlsx && mv CVC_${PROJECT}_Report.xlsx CVC_${PROJECT}_PrevReport.xlsx "
+               // sh "sudo cp ${WORKSPACE}/${PROJECT}/syft_cyclonedx.json ${WORKSPACE}/all_folders/CVC/${params.TIPAR_ID}/Security/CVCAndTechstack/${PROJECT}"
+                //sh " sudo cp ${WORKSPACE}/${PROJECT}/syft_cyclonedx.json ${fallBack}/Security/CVCAndTechstack/${PROJECT}"
+                //sh " sudo cp ${WORKSPACE}/${PROJECT}/dependency-check-report.xlsx ${fallBack}/Security/CVCAndTechstack/${PROJECT}"
+                
+            //Generating RAG for updated excel
+
+               sh "java -jar ${Grype_Home}/CVC_Grype_RAG_Genenrator-v1.3.jar -inputFile ${WORKSPACE}/${PROJECT}/${params.VERSION}/dependency-check-PrevReport.xlsx -reportName Merged -destPath ${WORKSPACE}/${PROJECT}/${params.VERSION}"
+
+                
+            // Pushing issues data to dashboard
+                
+               callInsightsAPI("${WORKSPACE}/${PROJECT}/${params.VERSION}/CVC_Merged_RAG.json",apiUrl1,buildDate,authToken,"Dependency Check",params.PIPELINE)
+                
+            //Renaming current dependency check excel report 
+            //sh "mv ${WORKSPACE}/${PROJECT}/dependency-check-report.xlsx ${WORKSPACE}/${PROJECT}/dependency-check-prevReport.xlsx"
+                
+  
+  
+               
+
+                        }
+                    }
+                }
+        }
+           
+
+
+  //post build actions based on the result of the pipeline
+	post 
+	{
+		always{
+          // scanForIssues sourceCodeRetention: 'LAST_BUILD', sourceDirectories: [[path: '']], tool: grype(pattern: '**/report_grype.json')
+          
+          recordIssues aggregatingResults: true, checksAnnotationScope: 'ALL', enabledForFailure: true, sourceCodeRetention: 'LAST_BUILD', sourceDirectories: [[path: '']], tools: [grype(pattern: "${PROJECT}/${params.VERSION}/report_grype.json")]
+    
+           
+        }
+		failure 
+		{
+			sh 'echo "Build Failed" '
+            updateGitlabCommitStatus name: "Jenkins Build #$BUILD_NUM", state: 'failed'
+        }
+		
+		success
+		{
+			sh 'echo "Build success" '
+           updateGitlabCommitStatus name: "Jenkins Build #$BUILD_NUM", state: 'success'
+
+		}
+	/*	always{
+         sh 'find ${WORKSPACE}/all_folders/CVC/${tipar_id}/Security/CVCAndTechstack/${PROJECT} -mtime +5 -exec rm -f {} +'
+             }*/
+	
+		
+    
+}
+
+}
+def callInsightsAPI(String outputPath, String apiUrl,String buildDate,String authToken,String stageName,String pipeline){
+    echo "callInsightsAPI method for pipeline ${pipeline}"
+      echo "Calling ResponseTIME INSIGHTS API"
+        def jsonOutput = readFile(outputPath)
+      echo "${jsonOutput}"
+      jsonOutput=jsonOutput.trim();
+      if(!(jsonOutput.startsWith('{'))){
+          jsonOutput = "{${jsonOutput}}"
+      }
+    // def buildNum = sh(returnStdout: true, script: "cat /var/jenkins_home/jobs/${JOB_BASE_NAME}/builds/${BUILD_NUMBER}/log | head -1 | awk '{print \$NF}' | tr -d '\\n'")
+   //   echo "${buildNum}"
+       def buildNum1=params.PARENT_BUILD_NUM
+   // def buildNum1=894
+      echo "${pipeline}"
+      jsonOutput = jsonOutput[0..<jsonOutput.size() -1]+ ',"pipeline":\"'+"${pipeline}"+'\","stage":\"'+"${stageName}"+'\","buildNumber":\"'+"${params.PARENT_BUILD_NUM}"+'\","buildDate":\"'+"${buildDate}"+'\"}'
+       echo "${jsonOutput}"
+       
+		   echo "stage utility"
+			 
+			   def curlCommand = "unset http_proxy && unset https_proxy && curl -X POST -H 'api-key: c2VjcmV0' -H 'Content-Type: application/json' -H 'auth-token: ${authToken}' -H 'Referer: http://localhost:4200' -H 'User-Agent: Mozilla/5.0' -d '${jsonOutput}' ${apiUrl}"
+               def response1 = sh(script: curlCommand, returnStdout: true).trim()
+               println("response1 >>> "+response1)
+    
+}
+
