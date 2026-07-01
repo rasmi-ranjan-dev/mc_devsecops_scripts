@@ -1,0 +1,21 @@
+dependency_check_bin: "/var/jenkins_home/Softwares/dependency-check-12.1.0/bin/dependency-check.sh"
+
+report: "Jile"        # relative to output folder
+reportDir: "Jile"
+report_format: "ALL"           # supports all report foprmats ( json, xml, ...)
+
+data_directory: "/var/jenkins_home/nvddbupdate/nvddbupdateonly"
+server_url: "http://172.18.228.57:8081"
+
+property_file: "/var/jenkins_home/Softwares/dependency-check-12.1.0/dependency-check.properties"
+log_file: "/var/jenkins_home/Softwares/dependency-check-12.1.0/cvc.log"
+
+#fail_on_cvss: 7
+noupdate: true
+
+disableAssembly: true
+disableOssIndex: true
+disableCentral: true
+disableRetireJS: true
+disableNodeAudit: true
+SCAN_TYPE: "CVC"
