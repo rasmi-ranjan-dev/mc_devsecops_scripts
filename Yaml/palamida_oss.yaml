@@ -1,0 +1,18 @@
+PROJECT : "Jile"
+oss_check_bin: "code-insight-agent-sdk-generic-plugin/generic-plugin"  # Path to the generic plugin JAR
+
+#connectivity
+SERVER: "http://10.32.47.15:8888"
+  #TOKEN : "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJwYWxhbWlkYSIsInVzZXJJZCI6MywiaWF0IjoxNzM0MDIzMjc0fQ.hyTpnABV54igsluUgja4G2G0ze_TC1P_mwRrcJXJySv02vKkpJJJokGvb2U0L0OB8ewIMWuwU_cUYnfTDAkWKQ"
+TOKEN: "flexnet_auth_token"
+ROOT_PATH: "."
+SCANDIR: "/u01/Homedir/palamida/FNCI-V7-2024R2/codebase/"
+ALIAS: "Scanner-core"
+PALAMIDA_URL: "10.32.47.16"                   # maps to -alias
+HOST: "palamida@10.32.47.16"            # maps to -host for scan
+GENERIC_JAR: "/FNCI-V7-2024R2/Palamida_home/tomcat/webapps/code-insight-agent-sdk-generic-plugin/generic-plugin-binary/codeinsight-generic-3.1.20.jar"
+
+# Java system properties
+agent_reset: false                      # -Dflx.agent.reset=false
+agent_log_level: "error"                # -Dflx.agent.logLevel=error
+SCAN_TYPE: "OSS"
